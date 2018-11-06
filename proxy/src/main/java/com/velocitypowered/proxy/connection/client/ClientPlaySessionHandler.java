@@ -172,7 +172,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
           }
         }
 
-        if (!actuallyRegistered.isEmpty()) {
+        if (!actuallyRegistered.isEmpty() && serverConn.hasCompletedJoin()) {
           PluginMessage newRegisterPacket = PluginMessageUtil.constructChannelsPacket(backendConn
               .getProtocolVersion(), actuallyRegistered);
           backendConn.write(newRegisterPacket);
@@ -180,9 +180,13 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
       } else if (PluginMessageUtil.isMCUnregister(packet)) {
         List<String> channels = PluginMessageUtil.getChannels(packet);
         knownChannels.removeAll(channels);
-        backendConn.write(packet);
+        if (serverConn.hasCompletedJoin()) {
+          backendConn.write(packet);
+        }
       } else if (PluginMessageUtil.isMCBrand(packet)) {
-        backendConn.write(PluginMessageUtil.rewriteMinecraftBrand(packet));
+        if (serverConn.hasCompletedJoin()) {
+          backendConn.write(PluginMessageUtil.rewriteMinecraftBrand(packet));
+        }
       } else if (backendConn.isLegacyForge() && !serverConn.hasCompletedJoin()) {
         if (packet.getChannel().equals(ForgeConstants.FORGE_LEGACY_HANDSHAKE_CHANNEL)) {
           if (!player.getModInfo().isPresent()) {
@@ -202,6 +206,11 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
           loginPluginMessages.add(packet);
         }
       } else {
+        if (!serverConn.hasCompletedJoin()) {
+          // can't handle plugin messages before JoinGame
+          return true;
+        }
+
         ChannelIdentifier id = server.getChannelRegistrar().getFromId(packet.getChannel());
         if (id == null) {
           backendConn.write(packet);
